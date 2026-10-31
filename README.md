@@ -49,3 +49,41 @@ Lease start and end times use the `DD.MM.YYYY HH:MM:SS` format.
 
 Any other arguments, such as `ipconf all`, print a usage error and return a
 nonzero status.
+
+## Example output
+
+The regular command shows the adapter and its IPv4/IPv6 addresses:
+
+```text
+Wi-Fi (en0)
+  ------------------------------------------
+  MAC Address         : 02:00:00:00:00:01
+  IPv4 Address        : 192.0.2.42/24
+  Subnet Mask         : 255.255.255.0
+  IPv6 Address        : 2001:db8::42/64
+  Default Gateway     : 192.0.2.1
+  DNS Suffix          : example.com
+```
+
+With `/all` (or `-all`), it includes network, DNS, and DHCP details:
+
+```text
+Wi-Fi (en0)
+  ------------------------------------------
+  MAC Address         : 02:00:00:00:00:01
+  IPv4 Address        : 192.0.2.42/24
+  Subnet Mask         : 255.255.255.0
+  Network Address     : 192.0.2.0/24
+  Broadcast Address   : 192.0.2.255
+  IPv6 Address        : 2001:db8::42/64
+  Default Gateway     : 192.0.2.1
+  DNS Suffix          : example.com
+  DNS Servers         : 192.0.2.1
+
+  DHCP
+  Status              : Enabled
+  Server              : 192.0.2.1
+  Lease Duration      : 86400 seconds
+  Lease Start         : 01.01.2025 12:00:00
+  Lease End           : 02.01.2025 12:00:00
+```
