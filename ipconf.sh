@@ -8,10 +8,10 @@ _ip_usage() {
     cat <<'USAGE'
 Usage: ipconf [FAMILY] [DETAILS]
 
-Show IPv4 and IPv6 configuration for network adapters.
+Show network adapter configuration (IPv4 by default).
 
 Family selectors (choose at most one):
-  -4, /4, -v4, /v4, -ipv4, /ipv4   Show IPv4 only
+  -4, /4, -v4, /v4, -ipv4, /ipv4   Show IPv4 only (default)
   -6, /6, -v6, /v6, -ipv6, /ipv6   Show IPv6 only
 
 Details:
@@ -88,7 +88,7 @@ _ip6_type() {
 }
 
 function ipconf {
-    local showall=0 show4=1 show6=1 family=both arg
+    local showall=0 show4=1 show6=0 family= arg
     local gateway suffix dns dns4 dns6 dns_config iface config ipv4 ipv6 ipv6_usable
     local ip maskhex addr prefix ipv6_type ipv6_label
     local masknum mask cidr bits ipnum network broadcast
@@ -127,8 +127,11 @@ function ipconf {
         esac
         shift
     done
-    [[ "$family" == "6" ]] && show4=0
-    [[ "$family" == "4" ]] && show6=0
+    family="${family:-4}"
+    if [[ "$family" == "6" ]]; then
+        show4=0
+        show6=1
+    fi
 
     # These settings are system-wide, so collect them once before scanning adapters.
     gateway=$(route -n get default 2>/dev/null |
@@ -144,12 +147,8 @@ function ipconf {
         sort -u | paste -sd ',' -)
     if [[ "$family" == "4" ]]; then
         dns="$dns4"
-    elif [[ "$family" == "6" ]]; then
-        dns="$dns6"
     else
-        dns=$(printf '%s\n' "$dns_config" |
-        awk '/nameserver\[[0-9]+\]/ {print $3}' |
-        sort -u | paste -sd ',' -)
+        dns="$dns6"
     fi
 
     while IFS= read -r iface; do
