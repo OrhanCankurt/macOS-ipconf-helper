@@ -1,4 +1,4 @@
-# macOS IP configuration: ipconf [-all | /all] [-4 | /4 | -v4 | /v4 | -ipv4 | /ipv4 | -6 | /6 | -v6 | /v6 | -ipv6 | /ipv6]
+# macOS IP configuration: IPv4 by default, ipconf /6 for IPv6.
 
 _ip_field() {
     printf '  %-31s : %s\n' "$1" "$2"
@@ -10,8 +10,7 @@ Usage: ipconf [FAMILY] [DETAILS]
 
 Show network adapter configuration (IPv4 by default).
 
-Family selectors (choose at most one):
-  -4, /4, -v4, /v4, -ipv4, /ipv4   Show IPv4 only (default)
+IPv6 selectors:
   -6, /6, -v6, /v6, -ipv6, /ipv6   Show IPv6 only
 
 Details:
@@ -20,7 +19,7 @@ Details:
 
 Examples:
   ipconf
-  ipconf -4
+  ipconf /all
   ipconf /ipv6 /all
 USAGE
 }
@@ -88,7 +87,7 @@ _ip6_type() {
 }
 
 function ipconf {
-    local showall=0 show4=1 show6=0 family= arg
+    local showall=0 show4=1 show6=0 arg
     local gateway suffix dns dns4 dns6 dns_config iface config ipv4 ipv6 ipv6_usable
     local ip maskhex addr prefix ipv6_type ipv6_label
     local masknum mask cidr bits ipnum network broadcast
@@ -106,32 +105,18 @@ function ipconf {
             -all|/all)
                 showall=1
                 ;;
-            -4|/4|-v4|/v4|-ipv4|/ipv4)
-                if [[ "$family" == "6" ]]; then
-                    printf 'Error: choose either IPv4 or IPv6, not both.\n' >&2
-                    return 2
-                fi
-                family=4
-                ;;
             -6|/6|-v6|/v6|-ipv6|/ipv6)
-                if [[ "$family" == "4" ]]; then
-                    printf 'Error: choose either IPv4 or IPv6, not both.\n' >&2
-                    return 2
-                fi
-                family=6
+                show4=0
+                show6=1
                 ;;
             *)
-                printf 'Error: invalid argument: %s\nUsage: ipconf [-all | /all] [-4 | /4 | -v4 | /v4 | -ipv4 | /ipv4 | -6 | /6 | -v6 | /v6 | -ipv6 | /ipv6]\n' "$arg" >&2
+                printf 'Error: invalid argument: %s\n' "$arg" >&2
+                _ip_usage >&2
                 return 2
                 ;;
         esac
         shift
     done
-    family="${family:-4}"
-    if [[ "$family" == "6" ]]; then
-        show4=0
-        show6=1
-    fi
 
     # These settings are system-wide, so collect them once before scanning adapters.
     gateway=$(route -n get default 2>/dev/null |
@@ -145,7 +130,7 @@ function ipconf {
     dns6=$(printf '%s\n' "$dns_config" |
         awk '/nameserver\[[0-9]+\]/ && $3 ~ /:/ {print $3}' |
         sort -u | paste -sd ',' -)
-    if [[ "$family" == "4" ]]; then
+    if [[ "$show4" -eq 1 ]]; then
         dns="$dns4"
     else
         dns="$dns6"
