@@ -1,22 +1,28 @@
-# macOS IP configuration: ipconf, ipconf -all, ipconf /all
-
-_ip_validate_args() {
-    local command="$1"
-    shift
-
-    if [[ $# -eq 0 ]]; then
-        return 0
-    fi
-    if [[ $# -eq 1 && ( "$1" == "-all" || "$1" == "/all" ) ]]; then
-        return 0
-    fi
-
-    printf 'Error: invalid arguments. Usage: %s [-all | /all]\n' "$command" >&2
-    return 2
-}
+# macOS IP configuration: ipconf [-all | /all] [-4 | /4 | -v4 | /v4 | -ipv4 | /ipv4 | -6 | /6 | -v6 | /v6 | -ipv6 | /ipv6]
 
 _ip_field() {
-    printf '  %-19s : %s\n' "$1" "$2"
+    printf '  %-31s : %s\n' "$1" "$2"
+}
+
+_ip_usage() {
+    cat <<'USAGE'
+Usage: ipconf [FAMILY] [DETAILS]
+
+Show IPv4 and IPv6 configuration for network adapters.
+
+Family selectors (choose at most one):
+  -4, /4, -v4, /v4, -ipv4, /ipv4   Show IPv4 only
+  -6, /6, -v6, /v6, -ipv6, /ipv6   Show IPv6 only
+
+Details:
+  -all, /all                         Show additional network and DHCP details
+  -help, /help                       Show this help
+
+Examples:
+  ipconf
+  ipconf -4
+  ipconf /ipv6 /all
+USAGE
 }
 
 _ip_header() {
@@ -55,34 +61,104 @@ _ip_lease_date() {
     LC_ALL=C date -j -f '%m/%d/%Y %H:%M:%S' "$1" '+%d.%m.%Y %H:%M:%S'
 }
 
-function ipconf {
-    # Accept only no option or the supported "show all" options.
-    _ip_validate_args ipconf "$@" || return $?
+_ip6_type() {
+    local addr="${1%%\%*}"
+    addr=$(printf '%s' "$addr" | tr '[:upper:]' '[:lower:]')
 
-    local showall=0
-    local gateway suffix dns iface config ipv4 ipv6 ip maskhex addr prefix
+    case "$addr" in
+        ::|0:0:0:0:0:0:0:0)
+            printf 'Unspecified'
+            ;;
+        ::1|0:0:0:0:0:0:0:1)
+            printf 'Loopback'
+            ;;
+        fe[89ab]*)
+            printf 'Link-Local (LLA)'
+            ;;
+        fc*|fd*)
+            printf 'Unique Local (ULA)'
+            ;;
+        2*|3*)
+            printf 'Global Unicast (GUA)'
+            ;;
+        *)
+            printf 'Other'
+            ;;
+    esac
+}
+
+function ipconf {
+    local showall=0 show4=1 show6=1 family=both arg
+    local gateway suffix dns dns4 dns6 dns_config iface config ipv4 ipv6 ipv6_usable
+    local ip maskhex addr prefix ipv6_type ipv6_label
     local masknum mask cidr bits ipnum network broadcast
     local network_ip broadcast_ip dhcp dhcp_server lease_hex
     local summary lease_start lease_end
-    [[ $# -eq 1 ]] && showall=1
+
+    # Parse options in any order; permit combining a family selector with "all".
+    while [[ $# -gt 0 ]]; do
+        arg="$1"
+        case "$arg" in
+            -help|/help)
+                _ip_usage
+                return 0
+                ;;
+            -all|/all)
+                showall=1
+                ;;
+            -4|/4|-v4|/v4|-ipv4|/ipv4)
+                if [[ "$family" == "6" ]]; then
+                    printf 'Error: choose either IPv4 or IPv6, not both.\n' >&2
+                    return 2
+                fi
+                family=4
+                ;;
+            -6|/6|-v6|/v6|-ipv6|/ipv6)
+                if [[ "$family" == "4" ]]; then
+                    printf 'Error: choose either IPv4 or IPv6, not both.\n' >&2
+                    return 2
+                fi
+                family=6
+                ;;
+            *)
+                printf 'Error: invalid argument: %s\nUsage: ipconf [-all | /all] [-4 | /4 | -v4 | /v4 | -ipv4 | /ipv4 | -6 | /6 | -v6 | /v6 | -ipv6 | /ipv6]\n' "$arg" >&2
+                return 2
+                ;;
+        esac
+        shift
+    done
+    [[ "$family" == "6" ]] && show4=0
+    [[ "$family" == "4" ]] && show6=0
 
     # These settings are system-wide, so collect them once before scanning adapters.
     gateway=$(route -n get default 2>/dev/null |
         awk '/gateway:/ {print $2; exit}')
-    dns=$(scutil --dns 2>/dev/null)
-    suffix=$(printf '%s\n' "$dns" |
+    dns_config=$(scutil --dns 2>/dev/null)
+    suffix=$(printf '%s\n' "$dns_config" |
         awk '/search domain\[0\]/ {print $NF; exit}')
-    dns=$(printf '%s\n' "$dns" |
+    dns4=$(printf '%s\n' "$dns_config" |
+        awk '/nameserver\[[0-9]+\]/ && $3 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {print $3}' |
+        sort -u | paste -sd ',' -)
+    dns6=$(printf '%s\n' "$dns_config" |
+        awk '/nameserver\[[0-9]+\]/ && $3 ~ /:/ {print $3}' |
+        sort -u | paste -sd ',' -)
+    if [[ "$family" == "4" ]]; then
+        dns="$dns4"
+    elif [[ "$family" == "6" ]]; then
+        dns="$dns6"
+    else
+        dns=$(printf '%s\n' "$dns_config" |
         awk '/nameserver\[[0-9]+\]/ {print $3}' |
         sort -u | paste -sd ',' -)
+    fi
 
     while IFS= read -r iface; do
-        # Read each adapter once, then collect its non-loopback IPv4 and global IPv6 addresses.
+        # Skip interfaces that have only link-local IPv6 addresses, common on macOS virtual adapters.
         config=$(ifconfig "$iface") || return $?
         ipv4=$(printf '%s\n' "$config" |
             awk '/inet / && $2 != "127.0.0.1" {print $2, $4}')
         ipv6=$(printf '%s\n' "$config" |
-            awk '/inet6 / && $2 !~ /^fe80/ && $2 != "::1" {
+            awk '/inet6 / {
                 for (i = 3; i < NF; i++) {
                     if ($i == "prefixlen") {
                         print $2, $(i + 1)
@@ -90,64 +166,86 @@ function ipconf {
                     }
                 }
             }')
-        [[ -n "$ipv4" || -n "$ipv6" ]] || continue
+
+        # Loopback and link-local-only adapters are noisy; keep link-local addresses on active adapters.
+        ipv6_usable=
+        while read -r addr prefix; do
+            [[ -n "$addr" ]] || continue
+            ipv6_type=$(_ip6_type "$addr")
+            if [[ "$ipv6_type" != "Loopback" &&
+                  "$ipv6_type" != "Link-Local (LLA)" ]]; then
+                ipv6_usable=1
+            fi
+        done <<< "$ipv6"
+        [[ "$show4" -eq 1 && -n "$ipv4" ||
+           "$show6" -eq 1 && -n "$ipv6_usable" ]] || continue
 
         _ip_header "$iface"
-        while read -r ip maskhex; do
-            [[ -n "$ip" ]] || continue
-            masknum=$((maskhex))
-            printf -v mask '%d.%d.%d.%d' \
-                $(((masknum >> 24) & 255)) \
-                $(((masknum >> 16) & 255)) \
-                $(((masknum >> 8) & 255)) \
-                $((masknum & 255))
+        if [[ "$show4" -eq 1 ]]; then
+            while read -r ip maskhex; do
+                [[ -n "$ip" ]] || continue
+                masknum=$((maskhex))
+                printf -v mask '%d.%d.%d.%d' \
+                    $(((masknum >> 24) & 255)) \
+                    $(((masknum >> 16) & 255)) \
+                    $(((masknum >> 8) & 255)) \
+                    $((masknum & 255))
 
-            # Count set mask bits to convert the dotted subnet mask to CIDR notation.
-            cidr=0
-            bits=$((masknum & 0xffffffff))
-            while ((bits)); do
-                cidr=$((cidr + (bits & 1)))
-                bits=$((bits >> 1))
-            done
+                # Count set mask bits to convert the dotted subnet mask to CIDR notation.
+                cidr=0
+                bits=$((masknum & 0xffffffff))
+                while ((bits)); do
+                    cidr=$((cidr + (bits & 1)))
+                    bits=$((bits >> 1))
+                done
 
-            _ip_field "IPv4 Address" "$ip/$cidr"
-            _ip_field "Subnet Mask" "$mask"
+                _ip_field "IPv4 Address" "$ip/$cidr"
+                _ip_field "Subnet Mask" "$mask"
 
-            if [[ "$showall" -eq 1 ]]; then
-                # Apply the subnet mask to derive the network and broadcast addresses.
-                ipnum=$(IFS=. read -r a b c d <<< "$ip"
-                    printf '%s' "$((10#$a << 24 |
-                        10#$b << 16 | 10#$c << 8 | 10#$d))")
-                network=$((ipnum & masknum))
-                broadcast=$((network | (0xffffffff ^ masknum)))
+                if [[ "$showall" -eq 1 ]]; then
+                    # Apply the subnet mask to derive the network and broadcast addresses.
+                    ipnum=$(IFS=. read -r a b c d <<< "$ip"
+                        printf '%s' "$((10#$a << 24 |
+                            10#$b << 16 | 10#$c << 8 | 10#$d))")
+                    network=$((ipnum & masknum))
+                    broadcast=$((network | (0xffffffff ^ masknum)))
 
-                printf -v network_ip '%d.%d.%d.%d' \
-                    $(((network >> 24) & 255)) \
-                    $(((network >> 16) & 255)) \
-                    $(((network >> 8) & 255)) \
-                    $((network & 255))
-                printf -v broadcast_ip '%d.%d.%d.%d' \
-                    $(((broadcast >> 24) & 255)) \
-                    $(((broadcast >> 16) & 255)) \
-                    $(((broadcast >> 8) & 255)) \
-                    $((broadcast & 255))
+                    printf -v network_ip '%d.%d.%d.%d' \
+                        $(((network >> 24) & 255)) \
+                        $(((network >> 16) & 255)) \
+                        $(((network >> 8) & 255)) \
+                        $((network & 255))
+                    printf -v broadcast_ip '%d.%d.%d.%d' \
+                        $(((broadcast >> 24) & 255)) \
+                        $(((broadcast >> 16) & 255)) \
+                        $(((broadcast >> 8) & 255)) \
+                        $((broadcast & 255))
 
-                _ip_field "Network Address" "$network_ip/$cidr"
-                _ip_field "Broadcast Address" "$broadcast_ip"
+                    _ip_field "Network Address" "$network_ip/$cidr"
+                    _ip_field "Broadcast Address" "$broadcast_ip"
+                fi
+            done <<< "$ipv4"
+        fi
+
+        if [[ "$show6" -eq 1 ]]; then
+          while read -r addr prefix; do
+            if [[ -n "$addr" ]]; then
+                ipv6_type=$(_ip6_type "$addr")
+                [[ "$ipv6_type" == "Loopback" ]] && continue
+                ipv6_label=${ipv6_type% (*)}
+                _ip_field "IPv6 $ipv6_label Address" "$addr/$prefix"
             fi
-        done <<< "$ipv4"
+          done <<< "$ipv6"
+        fi
 
-        while read -r addr prefix; do
-            [[ -n "$addr" ]] && _ip_field "IPv6 Address" "$addr/$prefix"
-        done <<< "$ipv6"
-
-        [[ -n "$ipv4" ]] && _ip_field "Default Gateway" "${gateway:-N/A}"
+        [[ "$show4" -eq 1 && -n "$ipv4" ]] &&
+            _ip_field "Default Gateway" "${gateway:-N/A}"
         [[ -n "$suffix" ]] && _ip_field "DNS Suffix" "$suffix"
 
         if [[ "$showall" -eq 1 ]]; then
             [[ -n "$dns" ]] && _ip_field "DNS Servers" "$dns"
 
-            if [[ -n "$ipv4" ]]; then
+            if [[ "$show4" -eq 1 && -n "$ipv4" ]]; then
                 # macOS exposes DHCP lease details through ipconfig's packet and summary.
                 dhcp=$(ipconfig getpacket "$iface" 2>/dev/null)
                 dhcp_server=$(printf '%s\n' "$dhcp" |
