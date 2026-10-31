@@ -43,9 +43,7 @@ ipconf -help
 ipconf /help
 ipconf -all
 ipconf /all
-ipconf -4       # /4, -v4, /v4, -ipv4, /ipv4
 ipconf -6       # /6, -v6, /v6, -ipv6, /ipv6
-ipconf /4 /all
 ipconf /6 /all
 ```
 
@@ -56,8 +54,7 @@ Usage: ipconf [FAMILY] [DETAILS]
 
 Show network adapter configuration (IPv4 by default).
 
-Family selectors (choose at most one):
-  -4, /4, -v4, /v4, -ipv4, /ipv4   Show IPv4 only (default)
+IPv6 selectors:
   -6, /6, -v6, /v6, -ipv6, /ipv6   Show IPv6 only
 
 Details:
@@ -66,19 +63,18 @@ Details:
 
 Examples:
   ipconf
-  ipconf -4
+  ipconf /all
   ipconf /ipv6 /all
 ```
 
 `ipconf` shows each adapter's name, interface identifier, MAC address, IPv4
 addresses, subnet masks, default gateway, and DNS suffix when available.
 
-Use `-4`, `-v4`, or `-ipv4` (or their `/4`, `/v4`, `/ipv4` forms) to show
-only IPv4 details. Use `-6`, `-v6`, or `-ipv6` (or `/6`, `/v6`, `/ipv6`) to
+Use `-6`, `-v6`, or `-ipv6` (or `/6`, `/v6`, `/ipv6`) to
 show only IPv6 details. Add `-all` or `/all` to either selector for additional
 details, for example `ipconf /ipv6 /all`. If no family selector is given,
-only IPv4 is shown, including with `ipconf /all`. Specifying both IPv4 and
-IPv6 selectors is an error.
+only IPv4 is shown, including with `ipconf /all`. Explicit IPv4 switches
+are not supported because IPv4 is already the default.
 
 IPv6 addresses are labeled as Link-Local (LLA, `fe80::/10`), Unique Local
 (ULA, `fc00::/7`), Global Unicast (GUA, `2000::/3`), Unspecified (`::/128`),
