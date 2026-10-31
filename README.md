@@ -18,7 +18,7 @@ directory containing `ipconf.sh`:
 
 ```zsh
 mkdir -p "$HOME/.local/share/ipconf"
-cp ./ip-helpers.sh "$HOME/.local/share/ipconf/ipconf.sh"
+cp ./ipconf.sh "$HOME/.local/share/ipconf/ipconf.sh"
 
 grep -Fqx 'source "$HOME/.local/share/ipconf/ipconf.sh"' "$HOME/.zshrc" 2>/dev/null ||
   printf '\n%s\n' 'source "$HOME/.local/share/ipconf/ipconf.sh"' >> "$HOME/.zshrc"
