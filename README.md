@@ -12,23 +12,23 @@ adapter. It can also show additional network and DHCP details.
 
 ## Installation
 
-To make `ipconf` available in every Zsh terminal, copy `ip-helpers.sh` to a
+To make `ipconf` available in every Zsh terminal, copy `ipconf.sh` to a
 stable location, then add it to `~/.zshrc`. Run these commands from the
-directory containing `ip-helpers.sh`:
+directory containing `ipconf.sh`:
 
 ```zsh
 mkdir -p "$HOME/.local/share/ipconf"
-cp ./ip-helpers.sh "$HOME/.local/share/ipconf/ip-helpers.sh"
+cp ./ip-helpers.sh "$HOME/.local/share/ipconf/ipconf.sh"
 
-grep -Fqx 'source "$HOME/.local/share/ipconf/ip-helpers.sh"' "$HOME/.zshrc" 2>/dev/null ||
-  printf '\n%s\n' 'source "$HOME/.local/share/ipconf/ip-helpers.sh"' >> "$HOME/.zshrc"
+grep -Fqx 'source "$HOME/.local/share/ipconf/ipconf.sh"' "$HOME/.zshrc" 2>/dev/null ||
+  printf '\n%s\n' 'source "$HOME/.local/share/ipconf/ipconf.sh"' >> "$HOME/.zshrc"
 
 source "$HOME/.zshrc"
 ```
 
 The `grep` check prevents adding the source line more than once. Open a new
 terminal after installation, or run `source ~/.zshrc` to reload it. To install
-for Bash instead, add the same `source "$HOME/.local/share/ipconf/ip-helpers.sh"`
+for Bash instead, add the same `source "$HOME/.local/share/ipconf/ipconf.sh"`
 line to `~/.bash_profile`.
 
 ## Usage
